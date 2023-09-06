@@ -1,0 +1,11 @@
+services:
+  streamprobe:
+    build: .
+      # context: .
+      # dockerfile: Dockerfile
+    environment:
+      CONFIG_FILE: /app/config.yaml
+      DATA_LOG_DIR: /app/log
+    volumes:
+      - './config.yaml:/app/config.yaml'
+      - ./log:/app/log
