@@ -3,10 +3,11 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 import csv
 import cv2
 import yaml
+import numpy as np
 
 DATA_LOG_DIR = Path(os.environ.get('DATA_LOG_DIR', './log'))
 CONFIG_FILE = Path(os.environ.get('CONFIG_FILE', 'config.yaml'))
@@ -21,14 +22,18 @@ logger = logging.getLogger(__name__)
 class RowData:
     timestamp: datetime
     frames: int = None
+    unique_frames: int = None
     dropped: int = None
     success: bool = None
     period: timedelta = None
-    fps: float = None
 
     @property
     def row_list(self):
-        return [self.timestamp, self.frames, self.dropped, self.success, self.period, self.fps]
+        return asdict(self).values()
+    
+    @classmethod
+    def get_row_header(cls):
+        return [f.name for f in fields(cls)]
 
 
 def read_config(config_file: Path = CONFIG_FILE):
@@ -51,11 +56,17 @@ def get_stream_uri(url: str, username: str = None, password: str = None):
 def run(url: str, username: str = None, password: str = None):
     uri = get_stream_uri(url=url, username=username, password=password)
     capture = cv2.VideoCapture(uri)
-    count = 0
+    frames = 0
+    unique_frames = 0
     dropped = 0
+    success_period = None
     last_success_ts = None
+    last_frame = None
+    last_unique_frame_ts = None
     max_period = None
-    max_fps = None
+    max_unique_period = None
+    fps = capture.get(cv2.CAP_PROP_FPS)  # get the actual fps for the stream...
+    spf = 1/fps  # get the proper seconds per frame
     DATA_LOG_DIR.mkdir(exist_ok=True)
 
     while capture.isOpened():
@@ -63,36 +74,54 @@ def run(url: str, username: str = None, password: str = None):
         curr_log_hr = ts.hour
         csv_log_f = DATA_LOG_DIR.joinpath(f'log_{ts.strftime("%Y%m%d_%H.csv")}')
         logger.info(f'creating a new csv log file: {csv_log_f}')
-        with csv_log_f.open('w+') as csv_file:
-            writer = csv.writer(csv_file)
-            while ts.hour == curr_log_hr:
+        write_header = not csv_log_f.exists()
+        with csv_log_f.open('a') as csv_file:
+            writer = csv.writer(csv_file)  # the writer object for our csv file
+            if write_header:
+                logger.info(f'writing the row header')
+                writer.writerow(RowData.get_row_header())
+            while ts.hour == curr_log_hr:  # if the hour rolls over, will need to create a new csv file (outer while loop)...
                 ts = datetime.utcnow()
+                if (last_success_ts is not None) and (last_unique_frame_ts is not None):        
+                    success_period = ts - last_success_ts
+                    unique_period = ts - last_unique_frame_ts
+                    if (success_period.total_seconds() < spf) and (unique_period.total_seconds() < spf):
+                        continue  # no sense trying to capture faster than the FPS
+
                 has_frame, frame = capture.read()
-                period = None
+
                 if has_frame:
-                    count += 1
-                    if last_success_ts is not None:
-                        period = ts - last_success_ts
-                    if max_period is not None:
-                        if period > max_period:
-                            max_period = period
-                            logger.info(f'longest frame capture period detected: {max_period}')
+                    frames += 1
+                    if last_frame is not None:
+                        if not np.array_equal(frame, last_frame):
+                            unique_frames += 1
+                            if last_unique_frame_ts is not None:
+                                if max_unique_period is not None:
+                                    if unique_period > max_unique_period:
+                                        max_unique_period = unique_period
+                                        logger.info(f'longest time between unique frames detected: {max_unique_period}')
+                                else:
+                                    max_unique_period = unique_period
+                            last_unique_frame_ts = ts
                     else:
-                        max_period = period
+                        unique_frames += 1
+                        last_unique_frame_ts = ts
+                    
+                    if last_success_ts is not None:
+                        success_period = (ts - last_success_ts)
+                        if max_period is not None:
+                            if success_period > max_period:
+                                max_period = success_period
+                                logger.info(f'longest frame capture period detected: {max_period}')
+                        else:
+                            max_period = success_period
                     last_success_ts = ts
                 else:
                     dropped += 1
 
-                fps = capture.get(cv2.CAP_PROP_FPS)
-                if max_fps is not None:
-                    if fps > max_fps:
-                        max_fps = fps
-                        logger.info(f'gratest fps value observed: {max_fps}')
-                else:
-                    max_fps = fps
-
-                row = RowData(timestamp=ts, frames=count, dropped=dropped, success=has_frame, period=period, fps=fps)
-                writer.writerow(row.row_list)
+                row = RowData(timestamp=ts, frames=frames, unique_frames=unique_frames, dropped=dropped, success=has_frame, period=success_period)  # create our row data to write...
+                writer.writerow(row.row_list)  # write to our log csv
+                last_frame = frame  # update our frame memory...
 
 
 
