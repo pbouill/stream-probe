@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 class RowData:
     timestamp: datetime
     count: int = None
+    dropped: int = None
     success: bool = None
     period: timedelta = None
+    fps: float = None
 
     @property
     def row_list(self):
@@ -50,6 +52,7 @@ def run(url: str, username: str = None, password: str = None):
     uri = get_stream_uri(url=url, username=username, password=password)
     capture = cv2.VideoCapture(uri)
     count = 0
+    dropped = 0
     last_success_ts = None
     max_period = None
     DATA_LOG_DIR.mkdir(exist_ok=True)
@@ -75,9 +78,13 @@ def run(url: str, username: str = None, password: str = None):
                         if period > max_period:
                             max_period = period
                             logger.info(f'longest frame capture period detected: {max_period}')
+                    else:
+                        max_period = period
                     last_success_ts = ts
+                else:
+                    dropped += 1
 
-                row = RowData(timestamp=ts, count=count, success=has_frame, period=period)
+                row = RowData(timestamp=ts, count=count, dropped=dropped, success=has_frame, period=period, fps=capture.get(cv2.CAP_PROP_FPS))
                 writer.writerow(row.row_list)
 
 
