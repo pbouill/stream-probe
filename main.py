@@ -103,6 +103,8 @@ def run(url: str, username: str = None, password: str = None):
                                 else:
                                     max_unique_period = unique_period
                             last_unique_frame_ts = ts
+                        else:
+                            logger.warning(f'returned a non-unique/duplicate frame from previous pass!')
                     else:
                         unique_frames += 1
                         last_unique_frame_ts = ts
