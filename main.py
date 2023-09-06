@@ -58,8 +58,6 @@ def run(url: str, username: str = None, password: str = None):
     max_fps = None
     DATA_LOG_DIR.mkdir(exist_ok=True)
 
-    # csv_log = csv.writer()
-
     while capture.isOpened():
         ts = datetime.utcnow()
         curr_log_hr = ts.hour
@@ -90,6 +88,8 @@ def run(url: str, username: str = None, password: str = None):
                     if fps > max_fps:
                         max_fps = fps
                         logger.info(f'gratest fps value observed: {max_fps}')
+                else:
+                    max_fps = fps
 
                 row = RowData(timestamp=ts, frames=count, dropped=dropped, success=has_frame, period=period, fps=fps)
                 writer.writerow(row.row_list)
@@ -107,11 +107,6 @@ if __name__ == '__main__':
     stream_password = stream_config.get('password', None)
 
     run(url=stream_url, username=stream_username, password=stream_password)
-
-    # uri = get_stream_uri(url=stream_url, username=stream_username, password=stream_password)
-    # logger.info(f'stream uri is: {uri}')
-    
-    # capture = cv2.VideoCapture(uri)
     
     
 
