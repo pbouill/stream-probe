@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RowData:
     timestamp: datetime
-    count: int = None
+    frames: int = None
     dropped: int = None
     success: bool = None
     period: timedelta = None
@@ -28,7 +28,7 @@ class RowData:
 
     @property
     def row_list(self):
-        return [self.timestamp, self.count, self.success, self.period]
+        return [self.timestamp, self.frames, self.dropped, self.success, self.period, self.fps]
 
 
 def read_config(config_file: Path = CONFIG_FILE):
@@ -55,6 +55,7 @@ def run(url: str, username: str = None, password: str = None):
     dropped = 0
     last_success_ts = None
     max_period = None
+    max_fps = None
     DATA_LOG_DIR.mkdir(exist_ok=True)
 
     # csv_log = csv.writer()
@@ -84,7 +85,13 @@ def run(url: str, username: str = None, password: str = None):
                 else:
                     dropped += 1
 
-                row = RowData(timestamp=ts, count=count, dropped=dropped, success=has_frame, period=period, fps=capture.get(cv2.CAP_PROP_FPS))
+                fps = capture.get(cv2.CAP_PROP_FPS)
+                if max_fps is not None:
+                    if fps > max_fps:
+                        max_fps = fps
+                        logger.info(f'gratest fps value observed: {max_fps}')
+
+                row = RowData(timestamp=ts, frames=count, dropped=dropped, success=has_frame, period=period, fps=fps)
                 writer.writerow(row.row_list)
 
 
