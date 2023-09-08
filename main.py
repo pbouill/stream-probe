@@ -11,6 +11,7 @@ import numpy as np
 
 DATA_LOG_DIR = Path(os.environ.get('DATA_LOG_DIR', './log'))
 CONFIG_FILE = Path(os.environ.get('CONFIG_FILE', 'config.yaml'))
+FPS = os.environ.get('FPS', None)
 
 LOG_FORMAT = (
     '%(asctime)s.%(msecs)06d :: %(levelname)s :: %(name)s :: %(module)s.%(funcName)s:%(lineno)d - %(message)s'
@@ -53,7 +54,7 @@ def get_stream_uri(url: str, username: str = None, password: str = None):
         cred_str = ''
     return url._replace(netloc=f'{cred_str}{netloc}').geturl()
 
-def run(url: str, username: str = None, password: str = None):
+def run(url: str, username: str = None, password: str = None, fps: int = None):
     uri = get_stream_uri(url=url, username=username, password=password)
     capture = cv2.VideoCapture(uri)
     frames = 0
@@ -65,8 +66,15 @@ def run(url: str, username: str = None, password: str = None):
     last_unique_frame_ts = None
     max_period = None
     max_unique_period = None
-    fps = capture.get(cv2.CAP_PROP_FPS)  # get the actual fps for the stream...
+    
+    stream_fps = capture.get(cv2.CAP_PROP_FPS)  # get the actual fps for the stream...
+    logger.info(f'FPS for the stream is: {stream_fps}')
+    if fps is None:
+        fps = stream_fps 
+    fps = int(fps)
     spf = 1/fps  # get the proper seconds per frame
+    logger.info(f'Will attempt to return frames at: {fps} FPS ({spf} sec/frame)')
+
     DATA_LOG_DIR.mkdir(exist_ok=True)
 
     while capture.isOpened():
@@ -78,7 +86,8 @@ def run(url: str, username: str = None, password: str = None):
         with csv_log_f.open('a') as csv_file:
             writer = csv.writer(csv_file)  # the writer object for our csv file
             if write_header:
-                logger.info(f'writing the row header')
+                csv_file.write(f'# URL: {url}\n')
+                csv_file.write(f'# FPS: {fps}\n')
                 writer.writerow(RowData.get_row_header())
             while ts.hour == curr_log_hr:  # if the hour rolls over, will need to create a new csv file (outer while loop)...
                 ts = datetime.utcnow()
@@ -126,7 +135,6 @@ def run(url: str, username: str = None, password: str = None):
                 last_frame = frame  # update our frame memory...
 
 
-
 if __name__ == '__main__':
     config = read_config()
     logger.debug(f'Configuration is: {config}')
@@ -137,7 +145,9 @@ if __name__ == '__main__':
     stream_username = stream_config.get('username', None)
     stream_password = stream_config.get('password', None)
 
-    run(url=stream_url, username=stream_username, password=stream_password)
+    fps = config.get('fps', FPS)
+
+    run(url=stream_url, username=stream_username, password=stream_password, fps=fps)
     
     
 
