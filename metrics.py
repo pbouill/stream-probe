@@ -28,7 +28,6 @@ def get_fps(df: pd.DataFrame):
 
 if __name__ == '__main__':
     LOG_PATH = BASE_PATH.joinpath('log')
-    # LOG_PATH = Path("C:\\Users\\boui65012\Downloads\\log_data")
     df = get_data(path=LOG_PATH)
     fps = get_fps(df=df)
 
