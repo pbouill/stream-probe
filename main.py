@@ -12,12 +12,17 @@ import numpy as np
 DATA_LOG_DIR = Path(os.environ.get('DATA_LOG_DIR', './log'))
 CONFIG_FILE = Path(os.environ.get('CONFIG_FILE', 'config.yaml'))
 FPS = os.environ.get('FPS', None)
+MAX_FRAME_DROPS = 10  # number of consecutive frames that can be dropped before resetting the capture...
+MIN_CAPTURE_WAIT = timedelta(seconds=2)
 
 LOG_FORMAT = (
     '%(asctime)s.%(msecs)06d :: %(levelname)s :: %(name)s :: %(module)s.%(funcName)s:%(lineno)d - %(message)s'
 )
 logging.basicConfig(format=LOG_FORMAT, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+capture: cv2.VideoCapture = None
+capture_ts: datetime = None
 
 @dataclass
 class RowData:
@@ -54,12 +59,32 @@ def get_stream_uri(url: str, username: str = None, password: str = None):
         cred_str = ''
     return url._replace(netloc=f'{cred_str}{netloc}').geturl()
 
-def run(url: str, username: str = None, password: str = None, fps: int = None):
-    uri = get_stream_uri(url=url, username=username, password=password)
+def get_capture(uri: str):
+    global capture
+    global capture_ts
+    ts = datetime.utcnow()
+    if isinstance(capture, cv2.VideoCapture):
+        logger.info(f'releasing the current capture')
+        capture.release()
+    if capture_ts is not None:
+        if (ts - capture_ts) < MIN_CAPTURE_WAIT:
+            return
+    logger.info(f'creating new capture...')
     capture = cv2.VideoCapture(uri)
+    if capture.isOpened():
+        capture_ts = ts
+
+
+
+def run(url: str, username: str = None, password: str = None, fps: int = None):
+    global capture
+    uri = get_stream_uri(url=url, username=username, password=password)
+    get_capture(uri=uri)
+    # capture = cv2.VideoCapture(uri)
     frames = 0
     unique_frames = 0
     dropped = 0
+    consecutive_dropped = 0
     success_period = None
     last_success_ts = None
     last_frame = None
@@ -77,7 +102,7 @@ def run(url: str, username: str = None, password: str = None, fps: int = None):
 
     DATA_LOG_DIR.mkdir(exist_ok=True)
 
-    while capture.isOpened():
+    while True:
         ts = datetime.utcnow()
         curr_log_hr = ts.hour
         csv_log_f = DATA_LOG_DIR.joinpath(f'log_{ts.strftime("%Y%m%d_%H.csv")}')
@@ -91,6 +116,13 @@ def run(url: str, username: str = None, password: str = None, fps: int = None):
                 writer.writerow(RowData.get_row_header())
             while ts.hour == curr_log_hr:  # if the hour rolls over, will need to create a new csv file (outer while loop)...
                 ts = datetime.utcnow()
+                if (consecutive_dropped >= MAX_FRAME_DROPS) or (not capture.isOpened()):
+                    get_capture(uri=uri)
+                    consecutive_dropped = 0
+                
+                if not capture.isOpened():
+                    continue
+
                 if (last_success_ts is not None) and (last_unique_frame_ts is not None):        
                     success_period = ts - last_success_ts
                     unique_period = ts - last_unique_frame_ts
@@ -101,6 +133,7 @@ def run(url: str, username: str = None, password: str = None, fps: int = None):
 
                 if has_frame:
                     frames += 1
+                    consecutive_dropped = 0
                     if last_frame is not None:
                         if not np.array_equal(frame, last_frame):
                             unique_frames += 1
@@ -129,6 +162,7 @@ def run(url: str, username: str = None, password: str = None, fps: int = None):
                     last_success_ts = ts
                 else:
                     dropped += 1
+                    consecutive_dropped += 1
 
                 row = RowData(timestamp=ts, frames=frames, unique_frames=unique_frames, dropped=dropped, success=has_frame, period=success_period)  # create our row data to write...
                 writer.writerow(row.row_list)  # write to our log csv
