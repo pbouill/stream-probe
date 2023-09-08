@@ -9,7 +9,8 @@ PERIOD_COLUMN = 'period'
 def get_data(path=BASE_PATH):
     df = None
     for f in path.glob('*.csv'):
-        data = pd.read_csv(f,header=0)
+        data = pd.read_csv(f, header='infer', comment='#')
+        # print(data.head())
         data[TIMESTAMP_COLUMN] = pd.to_datetime(data[TIMESTAMP_COLUMN], format='ISO8601')
         data.set_index(TIMESTAMP_COLUMN, inplace=True)
         data[PERIOD_COLUMN] = pd.to_timedelta(data[PERIOD_COLUMN])

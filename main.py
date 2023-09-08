@@ -94,7 +94,7 @@ def run(url: str, username: str = None, password: str = None, fps: int = None):
                 if (last_success_ts is not None) and (last_unique_frame_ts is not None):        
                     success_period = ts - last_success_ts
                     unique_period = ts - last_unique_frame_ts
-                    if (success_period.total_seconds() < spf) and (unique_period.total_seconds() < spf):
+                    if (success_period.total_seconds() < spf):
                         continue  # no sense trying to capture faster than the FPS
 
                 has_frame, frame = capture.read()
