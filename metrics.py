@@ -39,8 +39,8 @@ if __name__ == '__main__':
     fig = plot.get_figure()
     fig.savefig(LOG_PATH.joinpath('scatter.png'))
 
-    print(f'Standard Deviation: {fps.std()}')
-    print(f'Median: {fps.median()}')
-    print(f'Mean: {fps.mean()}')
-    print(f'Minimum: {fps.min()}')
-    print(f'Maximum: {fps.max()}')
+    print(f'Standard Deviation: {fps.std():.4f}')
+    print(f'Median: {fps.median():.4f}')
+    print(f'Mean: {fps.mean():.4f}')
+    print(f'Minimum: {fps.min():.4f}')
+    print(f'Maximum: {fps.max():.4f}')
